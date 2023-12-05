@@ -74,7 +74,7 @@ import static io.ballerina.runtime.transactions.TransactionConstants.DEFAULT_CHE
 public class TransactionResourceManager {
 
     private static TransactionResourceManager transactionResourceManager = null;
-    private  static UserTransactionManager userTransactionManager = null;
+    private static UserTransactionManager userTransactionManager = null;
 
     private static final StrandMetadata COMMIT_METADATA = new StrandMetadata(BALLERINA_BUILTIN_PKG_PREFIX,
             TRANSACTION_PACKAGE_NAME,
@@ -103,6 +103,7 @@ public class TransactionResourceManager {
 
     private FileRecoveryLog fileRecoveryLog;
     private InMemoryRecoveryLog inMemoryRecoveryLog;
+    private RecoveryManager recoveryManager;
 
     Map<ByteBuffer, Object> transactionInfoMap;
 
@@ -125,8 +126,10 @@ public class TransactionResourceManager {
                     getDeleteOldLogs()
             );
             inMemoryRecoveryLog = new InMemoryRecoveryLog();
+            recoveryManager = new RecoveryManager();
         }
     }
+
     public static TransactionResourceManager getInstance() {
         if (transactionResourceManager == null) {
             synchronized (TransactionResourceManager.class) {
@@ -138,17 +141,24 @@ public class TransactionResourceManager {
         return transactionResourceManager;
     }
 
-    public static FileRecoveryLog getFileRecoveryLog(){
+    public static FileRecoveryLog getFileRecoveryLog() {
         return transactionResourceManager.fileRecoveryLog;
     }
 
-    public static InMemoryRecoveryLog getInMemoryLog(){
+    public static InMemoryRecoveryLog getInMemoryLog() {
         return transactionResourceManager.inMemoryRecoveryLog;
+    }
+
+    public RecoveryManager getRecoveryManager() {
+        return transactionResourceManager.recoveryManager;
+    }
+
+    public Map<String, List<BallerinaTransactionContext>> getResourceRegistry() {
+        return transactionResourceManager.resourceRegistry;
     }
 
     /**
      * This method sets values for atomikos transaction log path and name properties using the available configs.
-     *
      */
     private void setLogProperties() {
         final Path projectRoot = Paths.get(RuntimeUtils.USER_DIR);
@@ -210,7 +220,8 @@ public class TransactionResourceManager {
      * @return string recovery log file name
      */
     private String getRecoveryLogBaseName() {
-        VariableKey recoveryLogNameKey = new VariableKey(TRANSACTION_PACKAGE_ID, "recoveryLogName", PredefinedTypes.TYPE_STRING, false);
+        VariableKey recoveryLogNameKey =
+                new VariableKey(TRANSACTION_PACKAGE_ID, "recoveryLogName", PredefinedTypes.TYPE_STRING, false);
         if (!ConfigMap.containsKey(recoveryLogNameKey)) {
             return "recoveryLog";
         } else {
@@ -223,9 +234,10 @@ public class TransactionResourceManager {
      *
      * @return string recovery log directory
      */
-    private Path getRecoveryLogDir(){
+    private Path getRecoveryLogDir() {
         final Path projectRoot = Paths.get(RuntimeUtils.USER_DIR);
-        VariableKey recoveryLogDirKey = new VariableKey(TRANSACTION_PACKAGE_ID, "recoveryLogDir", PredefinedTypes.TYPE_STRING, false);
+        VariableKey recoveryLogDirKey =
+                new VariableKey(TRANSACTION_PACKAGE_ID, "recoveryLogDir", PredefinedTypes.TYPE_STRING, false);
         if (!ConfigMap.containsKey(recoveryLogDirKey)) {
             return projectRoot;
         } else {
@@ -248,7 +260,8 @@ public class TransactionResourceManager {
      * @return int checkpoint interval
      */
     private Integer getCheckpointInterval() {
-        VariableKey recoveryLogNameKey = new VariableKey(TRANSACTION_PACKAGE_ID, "checkpointInterval", PredefinedTypes.TYPE_INT, false);
+        VariableKey recoveryLogNameKey =
+                new VariableKey(TRANSACTION_PACKAGE_ID, "checkpointInterval", PredefinedTypes.TYPE_INT, false);
         if (!ConfigMap.containsKey(recoveryLogNameKey)) {
             return DEFAULT_CHECKPOINT_INTERVAL;
         } else {
@@ -259,11 +272,14 @@ public class TransactionResourceManager {
             } else if (value instanceof Integer) {
                 checkpointInterval = (Integer) value;
             } else {
-                log.warn("Invalid value provided for checkpointInterval. Using default value " + DEFAULT_CHECKPOINT_INTERVAL + ".");
+                // TODO : change logging, log.debug doesn't work
+                System.out.println("Invalid value provided for checkpointInterval. Using default value " +
+                        DEFAULT_CHECKPOINT_INTERVAL + ".");
                 return DEFAULT_CHECKPOINT_INTERVAL;
             }
             if (checkpointInterval < 0 && checkpointInterval != -1) {
-                log.warn("Invalid value provided for checkpointInterval. Using default value " + DEFAULT_CHECKPOINT_INTERVAL + ".");
+                System.out.println("Invalid value provided for checkpointInterval. Using default value " +
+                        DEFAULT_CHECKPOINT_INTERVAL + ".");
                 return DEFAULT_CHECKPOINT_INTERVAL;
             } else {
                 return checkpointInterval;
@@ -302,7 +318,7 @@ public class TransactionResourceManager {
      * This method will register a committed function handler of a particular transaction.
      *
      * @param transactionBlockId the block id of the transaction
-     * @param fpValue   the function pointer for the committed function
+     * @param fpValue            the function pointer for the committed function
      */
     public void registerCommittedFunction(String transactionBlockId, BFunctionPointer fpValue) {
         if (fpValue != null) {
@@ -314,7 +330,7 @@ public class TransactionResourceManager {
      * This method will register an aborted function handler of a particular transaction.
      *
      * @param transactionBlockId the block id of the transaction
-     * @param fpValue   the function pointer for the aborted function
+     * @param fpValue            the function pointer for the aborted function
      */
     public void registerAbortedFunction(String transactionBlockId, BFunctionPointer fpValue) {
         if (fpValue != null) {
@@ -337,7 +353,7 @@ public class TransactionResourceManager {
     }
 
     /**
-     * This method acts as the callback which notify all the resources participated in the given transaction. 
+     * This method acts as the callback which notify all the resources participated in the given transaction.
      *
      * @param transactionId      the global transaction id
      * @param transactionBlockId the block id of the transaction
@@ -395,7 +411,7 @@ public class TransactionResourceManager {
                         trx.commit();
                     }
                 } catch (SystemException | HeuristicMixedException | HeuristicRollbackException
-                        | RollbackException e) {
+                         | RollbackException e) {
                     log.error("error when committing transaction " + transactionId + ":" + e.getMessage(), e);
                     commitSuccess = false;
                 }
@@ -424,6 +440,7 @@ public class TransactionResourceManager {
         }
         return commitSuccess;
     }
+
 
     public void cleanTransaction(String transactionId, String transactionBlockId) {
         String combinedId = generateCombinedTransactionId(transactionId, transactionBlockId);
@@ -491,9 +508,11 @@ public class TransactionResourceManager {
         return abortSuccess;
     }
 
+
+
     /**
-     * This method starts a transaction for the given xa resource. If there is no transaction is started for the
-     * given XID a new transaction is created.
+     * This method starts a transaction for the given xa resource. If there is no transaction is started for the given
+     * XID a new transaction is created.
      *
      * @param transactionId      the global transaction id
      * @param transactionBlockId the block id of the transaction
@@ -516,7 +535,7 @@ public class TransactionResourceManager {
         } else {
             Xid xid = xidRegistry.get(combinedId);
             if (xid == null) {
-                xid = XIDGenerator.createXID();
+                xid = XIDGenerator.createXID(combinedId);
                 xidRegistry.put(combinedId, xid);
             }
             try {
@@ -528,8 +547,8 @@ public class TransactionResourceManager {
     }
 
     /**
-     * Cleanup the Info record keeping state related to current transaction context and remove the current
-     * context from the stack.
+     * Cleanup the Info record keeping state related to current transaction context and remove the current context from
+     * the stack.
      */
     public void cleanupTransactionContext() {
         Strand strand = Scheduler.getStrand();
@@ -540,6 +559,7 @@ public class TransactionResourceManager {
 
     /**
      * This method returns true if there is a failure of the current transaction, otherwise false.
+     *
      * @return true if there is a failure of the current transaction.
      */
     public boolean getAndClearFailure() {
@@ -547,8 +567,9 @@ public class TransactionResourceManager {
     }
 
     /**
-     * This method is used to get the error which is set by calling setRollbackOnly().
-     * If it is not set, then returns null.
+     * This method is used to get the error which is set by calling setRollbackOnly(). If it is not set, then returns
+     * null.
+     *
      * @return the error or null.
      */
     public Object getRollBackOnlyError() {
@@ -558,6 +579,7 @@ public class TransactionResourceManager {
 
     /**
      * This method checks if the current strand is in a transaction or not.
+     *
      * @return True if the current strand is in a transaction.
      */
     public boolean isInTransaction() {
@@ -566,6 +588,7 @@ public class TransactionResourceManager {
 
     /**
      * This method notify the given transaction to abort.
+     *
      * @param transactionBlockId The transaction blockId
      */
     public void notifyTransactionAbort(String transactionBlockId) {
@@ -574,6 +597,7 @@ public class TransactionResourceManager {
 
     /**
      * This method retrieves the list of rollback handlers.
+     *
      * @return Array of rollback handlers
      */
     public BArray getRegisteredRollbackHandlerList() {
@@ -689,7 +713,7 @@ public class TransactionResourceManager {
     }
 
     private String generateCombinedTransactionId(String transactionId, String transactionBlockId) {
-        String compoundId =  transactionId + ":" + transactionBlockId;
+        String compoundId = transactionId + ":" + transactionBlockId;
         if (transactionBlockId.contains("_")) {
             return compoundId;
         }
