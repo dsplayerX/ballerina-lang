@@ -29,4 +29,5 @@ public interface BallerinaTransactionContext {
     void rollback();
     void close();
     XAResource getXAResource();
+    void refreshXAResource();
 }
