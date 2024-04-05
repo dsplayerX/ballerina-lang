@@ -265,12 +265,15 @@ public class PullCommand implements BLauncherCmd {
 
         CommandUtil.setPrintStream(errStream);
         String supportedPlatform = Arrays.stream(JvmTarget.values())
-                .map(target -> target.code())
+                .map(JvmTarget::code)
                 .collect(Collectors.joining(","));
         try {
             CentralAPIClient client = new CentralAPIClient(RepoUtils.getRemoteRepoURL(),
                     initializeProxy(settings.getProxy()), settings.getProxy().username(),
-                    settings.getProxy().password(), getAccessTokenOfCLI(settings));
+                    settings.getProxy().password(), getAccessTokenOfCLI(settings),
+                    settings.getCentral().getConnectTimeout(),
+                    settings.getCentral().getReadTimeout(), settings.getCentral().getWriteTimeout(),
+                    settings.getCentral().getCallTimeout());
             client.pullPackage(orgName, packageName, version, packagePathInBalaCache, supportedPlatform,
                     RepoUtils.getBallerinaVersion(), false);
             if (version.equals(Names.EMPTY.getValue())) {

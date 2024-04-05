@@ -1039,13 +1039,15 @@ public abstract class STTreeModifier extends STNodeTransformer<STNode> {
         STNode workerName = modifyNode(namedWorkerDeclarationNode.workerName);
         STNode returnTypeDesc = modifyNode(namedWorkerDeclarationNode.returnTypeDesc);
         STNode workerBody = modifyNode(namedWorkerDeclarationNode.workerBody);
+        STNode onFailClause = modifyNode(namedWorkerDeclarationNode.onFailClause);
         return namedWorkerDeclarationNode.modify(
                 annotations,
                 transactionalKeyword,
                 workerKeyword,
                 workerName,
                 returnTypeDesc,
-                workerBody);
+                workerBody,
+                onFailClause);
     }
 
     @Override
@@ -1954,6 +1956,14 @@ public abstract class STTreeModifier extends STNodeTransformer<STNode> {
     }
 
     @Override
+    public STAlternateReceiveNode transform(
+            STAlternateReceiveNode alternateReceiveNode) {
+        STNode workers = modifyNode(alternateReceiveNode.workers);
+        return alternateReceiveNode.modify(
+                workers);
+    }
+
+    @Override
     public STRestDescriptorNode transform(
             STRestDescriptorNode restDescriptorNode) {
         STNode typeDescriptor = modifyNode(restDescriptorNode.typeDescriptor);
@@ -2510,14 +2520,12 @@ public abstract class STTreeModifier extends STNodeTransformer<STNode> {
             STOnFailClauseNode onFailClauseNode) {
         STNode onKeyword = modifyNode(onFailClauseNode.onKeyword);
         STNode failKeyword = modifyNode(onFailClauseNode.failKeyword);
-        STNode typeDescriptor = modifyNode(onFailClauseNode.typeDescriptor);
-        STNode failErrorName = modifyNode(onFailClauseNode.failErrorName);
+        STNode typedBindingPattern = modifyNode(onFailClauseNode.typedBindingPattern);
         STNode blockStatement = modifyNode(onFailClauseNode.blockStatement);
         return onFailClauseNode.modify(
                 onKeyword,
                 failKeyword,
-                typeDescriptor,
-                failErrorName,
+                typedBindingPattern,
                 blockStatement);
     }
 
@@ -2915,6 +2923,18 @@ public abstract class STTreeModifier extends STNodeTransformer<STNode> {
         return memberTypeDescriptorNode.modify(
                 annotations,
                 typeDescriptor);
+    }
+
+    @Override
+    public STReceiveFieldNode transform(
+            STReceiveFieldNode receiveFieldNode) {
+        STNode fieldName = modifyNode(receiveFieldNode.fieldName);
+        STNode colon = modifyNode(receiveFieldNode.colon);
+        STNode peerWorker = modifyNode(receiveFieldNode.peerWorker);
+        return receiveFieldNode.modify(
+                fieldName,
+                colon,
+                peerWorker);
     }
 
     // Tokens

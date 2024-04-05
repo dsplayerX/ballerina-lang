@@ -45,6 +45,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.math.BigInteger;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.file.FileSystem;
@@ -53,6 +54,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -61,10 +64,15 @@ import java.util.stream.Collectors;
 import static org.ballerinalang.central.client.CentralClientConstants.APPLICATION_JSON;
 import static org.ballerinalang.central.client.CentralClientConstants.BALLERINA_DEV_CENTRAL;
 import static org.ballerinalang.central.client.CentralClientConstants.BALLERINA_STAGE_CENTRAL;
+import static org.ballerinalang.central.client.CentralClientConstants.BYTES_FOR_KB;
 import static org.ballerinalang.central.client.CentralClientConstants.DEV_REPO;
 import static org.ballerinalang.central.client.CentralClientConstants.PRODUCTION_REPO;
+import static org.ballerinalang.central.client.CentralClientConstants.PROGRESS_BAR_BYTE_THRESHOLD;
 import static org.ballerinalang.central.client.CentralClientConstants.RESOLVED_REQUESTED_URI;
+import static org.ballerinalang.central.client.CentralClientConstants.SHA256;
+import static org.ballerinalang.central.client.CentralClientConstants.SHA256_ALGORITHM;
 import static org.ballerinalang.central.client.CentralClientConstants.STAGING_REPO;
+import static org.ballerinalang.central.client.CentralClientConstants.UPDATE_INTERVAL_MILLIS;
 
 /**
  * Utils class for this package.
@@ -76,6 +84,7 @@ public class Utils {
             System.getenv(BALLERINA_STAGE_CENTRAL));
     public static final boolean SET_BALLERINA_DEV_CENTRAL = Boolean.parseBoolean(
             System.getenv(BALLERINA_DEV_CENTRAL));
+
     private Utils() {
     }
 
@@ -89,21 +98,22 @@ public class Utils {
     /**
      * Create the bala in home repo.
      *
-     * @param balaDownloadResponse  http response for downloading the bala file
-     * @param pkgPathInBalaCache    package path in bala cache, <user.home>.ballerina/bala_cache/<org-name>/<pkg-name>
-     * @param pkgOrg                package org
-     * @param pkgName               package name
-     * @param isNightlyBuild        is nightly build
-     * @param deprecationMsg        deprecation message for deprecated packages
-     * @param newUrl                new redirect url
-     * @param contentDisposition    content disposition header
-     * @param outStream             Output print stream
-     * @param logFormatter          log formatter
+     * @param balaDownloadResponse http response for downloading the bala file
+     * @param pkgPathInBalaCache   package path in bala cache,
+     *                             <user.home>.ballerina/bala_cache/<org-name>/<pkg-name>
+     * @param pkgOrg               package org
+     * @param pkgName              package name
+     * @param isNightlyBuild       is nightly build
+     * @param deprecationMsg       deprecation message for deprecated packages
+     * @param newUrl               new redirect url
+     * @param contentDisposition   content disposition header
+     * @param outStream            Output print stream
+     * @param logFormatter         log formatter
      */
     public static void createBalaInHomeRepo(Response balaDownloadResponse, Path pkgPathInBalaCache, String pkgOrg,
-                                            String pkgName, boolean isNightlyBuild, String deprecationMsg,
-                                            String newUrl, String contentDisposition, PrintStream outStream,
-                                            LogFormatter logFormatter)
+            String pkgName, boolean isNightlyBuild, String deprecationMsg,
+            String newUrl, String contentDisposition, PrintStream outStream,
+            LogFormatter logFormatter, String trueDigest)
             throws CentralClientException {
 
         long responseContentLength = 0;
@@ -120,7 +130,7 @@ public class Utils {
         }
 
         String resolvedURI = balaDownloadResponse.header(RESOLVED_REQUESTED_URI);
-        if (resolvedURI == null || resolvedURI.equals("")) {
+        if (resolvedURI == null || resolvedURI.isEmpty()) {
             resolvedURI = newUrl;
         }
         String[] uriParts = resolvedURI.split("/");
@@ -130,7 +140,7 @@ public class Utils {
         String balaFile = getBalaFileName(contentDisposition, uriParts[uriParts.length - 1]);
         String platform = getPlatformFromBala(balaFile, pkgName, validPkgVersion);
         Path balaCacheWithPkgPath = pkgPathInBalaCache.resolve(validPkgVersion).resolve(platform);
-        //<user.home>.ballerina/bala_cache/<org-name>/<pkg-name>/<pkg-version>
+        // <user.home>.ballerina/bala_cache/<org-name>/<pkg-name>/<pkg-version>
 
         try {
             if (Files.isDirectory(balaCacheWithPkgPath) && Files.list(balaCacheWithPkgPath).findAny().isPresent()) {
@@ -158,14 +168,15 @@ public class Utils {
                     logFormatter.formatLog("error accessing bala : " + balaCacheWithPkgPath.toString()));
         }
 
-        // Create the following temp path bala/<org-name>/<pkg-name>/<pkg-version_temp/<platform>
+        // Create the following temp path
+        // bala/<org-name>/<pkg-name>/<pkg-version_temp/<platform>
         Path tempPath = pkgPathInBalaCache.resolve(validPkgVersion + "_temp").resolve(platform);
         createBalaFileDirectory(tempPath, logFormatter);
 
         // Write balaFiles to tempPath
         writeBalaFile(balaDownloadResponse, tempPath.resolve(balaFile),
                 pkgOrg + "/" + pkgName + ":" + validPkgVersion, responseContentLength,
-                outStream, logFormatter, pkgPathInBalaCache.resolve(validPkgVersion));
+                outStream, logFormatter, pkgPathInBalaCache.resolve(validPkgVersion), trueDigest);
 
         // Once files are written to temp path, rename temp path with platform name
         try {
@@ -240,21 +251,23 @@ public class Utils {
     /**
      * Write bala file to the home repo.
      *
-     * @param balaDownloadResponse  http bala file download response
-     * @param balaPath              path of the bala file
-     * @param fullPkgName           full package name, <org-name>/<pkg-name>:<pkg-version>
-     * @param resContentLength      response content length
-     * @param outStream             Output print stream
-     * @param logFormatter          log formatter
-     * @param homeRepo              path of the repo bala file is saved to
+     * @param balaDownloadResponse http bala file download response
+     * @param balaPath             path of the bala file
+     * @param fullPkgName          full package name,
+     *                             <org-name>/<pkg-name>:<pkg-version>
+     * @param resContentLength     response content length
+     * @param outStream            Output print stream
+     * @param logFormatter         log formatter
+     * @param homeRepo             path of the repo bala file is saved to
      */
     static void writeBalaFile(Response balaDownloadResponse, Path balaPath, String fullPkgName, long resContentLength,
-            PrintStream outStream, LogFormatter logFormatter, Path homeRepo) throws CentralClientException {
+            PrintStream outStream, LogFormatter logFormatter, Path homeRepo, String trueDigest)
+            throws CentralClientException {
         Optional<ResponseBody> body = Optional.ofNullable(balaDownloadResponse.body());
         if (body.isPresent()) {
             try {
                 try (InputStream inputStream = body.get().byteStream();
-                     FileOutputStream outputStream = new FileOutputStream(balaPath.toString())) {
+                        FileOutputStream outputStream = new FileOutputStream(balaPath.toString())) {
                     if (outStream == null) {
                         writeAndHandleProgressQuietly(inputStream, outputStream);
                     } else {
@@ -266,9 +279,9 @@ public class Utils {
                             logFormatter.formatLog("error occurred copying the bala file: " + e.getMessage()));
                 }
                 try {
-                    extractBala(balaPath, Optional.of(balaPath.getParent()).get());
+                    extractBala(balaPath, Optional.of(balaPath.getParent()).get(), trueDigest, fullPkgName, outStream);
                     Files.delete(balaPath);
-                } catch (IOException e) {
+                } catch (IOException | CentralClientException e) {
                     throw new CentralClientException(
                             logFormatter.formatLog("error occurred extracting the bala file: " + e.getMessage()));
                 }
@@ -302,12 +315,12 @@ public class Utils {
     /**
      * Handle package deprecation.
      *
-     * @param deprecateMsg       deprecated message
+     * @param deprecateMsg         deprecated message
      * @param balaCacheWithPkgPath bala cache with package path
      * @param logFormatter         log formatter
      */
     private static void handlePackageDeprecation(String deprecateMsg, Path balaCacheWithPkgPath,
-                                           LogFormatter logFormatter) throws CentralClientException {
+            LogFormatter logFormatter) throws CentralClientException {
         if (deprecateMsg != null) {
             // If its a deprecated package tag a file to denote as deprecated
             Path deprecateMsgFile = Paths.get(balaCacheWithPkgPath.toString(), DEPRECATED_META_FILE_NAME);
@@ -338,7 +351,7 @@ public class Utils {
         String remoteRepo = getRemoteRepo();
         String progressBarTask = fullPkgName + " [" + remoteRepo + " ->" + homeRepo + "] ";
         try (ProgressBar progressBar = new ProgressBar(progressBarTask, totalSizeInKB, 1000,
-                                                        outStream, ProgressBarStyle.ASCII, " KB", 1)) {
+                outStream, ProgressBarStyle.ASCII, " KB", 1)) {
             while ((count = inputStream.read(buffer)) > 0) {
                 outputStream.write(buffer, 0, count);
                 progressBar.step();
@@ -385,7 +398,7 @@ public class Utils {
         if (metaFilePath.toFile().exists()) {
             try (FileWriter fileWriter = new FileWriter(metaFilePath.toAbsolutePath().toString(),
                     Charset.defaultCharset());
-                 BufferedWriter bufferedWriter = new BufferedWriter(fileWriter)) {
+                    BufferedWriter bufferedWriter = new BufferedWriter(fileWriter)) {
                 bufferedWriter.write(message);
             } catch (IOException e) {
                 throw new CentralClientException(
@@ -402,7 +415,8 @@ public class Utils {
      * @return converted list of strings
      */
     static List<String> getAsList(String arrayString) {
-        return new Gson().fromJson(arrayString, new TypeToken<List<String>>() { }.getType());
+        return new Gson().fromJson(arrayString, new TypeToken<List<String>>() {
+        }.getType());
     }
 
     /**
@@ -419,9 +433,26 @@ public class Utils {
         return balaName.split(packageName + "-")[1].split("-" + version)[0];
     }
 
-    private static void extractBala(Path balaFilePath, Path balaFileDestPath) throws IOException {
+    private static void extractBala(Path balaFilePath, Path balaFileDestPath, String trueDigest, String packageName,
+            PrintStream outStream)
+            throws IOException, CentralClientException {
         Files.createDirectories(balaFileDestPath);
         URI zipURI = URI.create("jar:" + balaFilePath.toUri().toString());
+
+        // If the hash value is not matching , throw an exception.
+        if (!trueDigest.equals(SHA256 + checkHash(balaFilePath.toString(), SHA256_ALGORITHM))) {
+            StringBuilder warning = new StringBuilder(
+                    String.format("*************************************************************%n" +
+        "* WARNING: Certain packages may have originated from sources other than the official distributors. *%n" +
+        "*************************************************************%n%n" +
+        "* Verification failed: The hash value of the following package could not be confirmed. %n" +
+        packageName +
+        "%n"));
+            if (outStream != null) {
+                outStream.println(warning.toString());
+            }
+        }
+
         try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipURI, new HashMap<>())) {
             Path packageRoot = zipFileSystem.getPath("/");
             List<Path> paths = Files.walk(packageRoot).filter(path -> path != packageRoot).collect(Collectors.toList());
@@ -436,24 +467,35 @@ public class Utils {
         }
     }
 
+    public static String checkHash(String filePath, String algorithm) throws CentralClientException {
+        try {
+            byte[] data = Files.readAllBytes(Paths.get(filePath));
+            byte[] hash = MessageDigest.getInstance(algorithm).digest(data);
+            return new BigInteger(1, hash).toString(16);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            throw new CentralClientException("Unable to calculate the hash value of the file: " + filePath);
+        }
+    }
+
     static String getBearerToken(String accessToken) {
         return "Bearer " + accessToken;
     }
 
     /**
-     * Custom request body implementation that indicate the number of bytes written using a progress bar.
+     * Custom request body implementation that indicate the number of bytes written
+     * using a progress bar.
      */
     public static class ProgressRequestBody extends RequestBody {
         private final RequestBody reqBody;
         private final String task;
         private final PrintStream out;
-    
+
         public ProgressRequestBody(RequestBody reqBody, String task, PrintStream out) {
             this.reqBody = reqBody;
             this.task = task;
             this.out = out;
         }
-    
+
         @Override
         public MediaType contentType() {
             return this.reqBody.contentType();
@@ -469,19 +511,21 @@ public class Utils {
             final long totalBytes = contentLength();
             long byteConverter;
             String unitName;
-    
-            if (totalBytes < 1024 * 5) { // use bytes for progress bar if payload is less than 5 KB
+
+            if (totalBytes < BYTES_FOR_KB * PROGRESS_BAR_BYTE_THRESHOLD) {
+                // use bytes for progress bar if payload is less than 5 KB
                 byteConverter = 1;
                 unitName = " B";
-            } else if (totalBytes < 1024 * 1024 * 5) { // use kilobytes for progress bar if payload is less than 5 MB
-                byteConverter = 1024;
+            } else if (totalBytes < BYTES_FOR_KB * BYTES_FOR_KB * PROGRESS_BAR_BYTE_THRESHOLD) {
+                // use kilobytes for progress bar if payload is less than 5 MB
+                byteConverter = BYTES_FOR_KB;
                 unitName = " KB";
             } else { // else use megabytes for progress bar.
-                byteConverter = 1024 * 1024;
+                byteConverter = BYTES_FOR_KB * BYTES_FOR_KB;
                 unitName = " MB";
             }
-    
-            ProgressBar progressBar = new ProgressBar(task, contentLength(), 1000, out,
+
+            ProgressBar progressBar = new ProgressBar(task, contentLength(), UPDATE_INTERVAL_MILLIS, out,
                     ProgressBarStyle.ASCII, unitName, byteConverter);
             CountingSink countingSink = new CountingSink(sink, progressBar);
             BufferedSink progressSink = Okio.buffer(countingSink);
@@ -490,16 +534,16 @@ public class Utils {
             progressBar.close();
         }
     }
-    
+
     private static class CountingSink extends ForwardingSink {
         private long bytesWritten = 0;
         private final ProgressBar progressBar;
-    
+
         public CountingSink(Sink delegate, ProgressBar progressBar) {
             super(delegate);
             this.progressBar = progressBar;
         }
-        
+
         @Override
         public void write(Buffer source, long byteCount) throws IOException {
             super.write(source, byteCount);

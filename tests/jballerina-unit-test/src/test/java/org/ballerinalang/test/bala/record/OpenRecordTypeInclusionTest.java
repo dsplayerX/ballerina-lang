@@ -47,11 +47,12 @@ public class OpenRecordTypeInclusionTest {
 
     @BeforeClass
     public void setup() {
+        BCompileUtil.compileAndCacheBala("test-src/bala/test_projects/test_project_types");
         BCompileUtil.compileAndCacheBala("test-src/bala/test_projects/test_project_records");
         compileResult = BCompileUtil.compile("test-src/record/open_record_type_inclusion.bal");
     }
 
-    @Test(description = "Negative tests" , groups = {"disableOnOldParser"})
+    @Test(description = "Negative tests")
     public void negativeTests() {
         CompileResult negative = BCompileUtil.compile("test-src/record/open_record_type_inclusion_negative.bal");
         int index = 0;
@@ -192,6 +193,7 @@ public class OpenRecordTypeInclusionTest {
                 "testCyclicRecord",
                 "testOutOfOrderFieldOverridingFieldFromTypeInclusion",
                 "testCreatingRecordWithOverriddenFields",
+                "testDefaultValuesOfRecordFieldsWithTypeInclusion"
         };
     }
 

@@ -167,6 +167,7 @@ public class JvmConstants {
     public static final String FINITE_TYPE_IMPL = "io/ballerina/runtime/internal/types/BFiniteType";
     public static final String FUTURE_TYPE_IMPL = "io/ballerina/runtime/internal/types/BFutureType";
     public static final String TYPE_REF_TYPE_IMPL = "io/ballerina/runtime/internal/types/BTypeReferenceType";
+    public static final String TYPE_IMPL = "io/ballerina/runtime/internal/types/BType";
     public static final String MODULE = "io/ballerina/runtime/api/Module";
     public static final String CURRENT_MODULE_VAR_NAME = "$moduleName";
     public static final String B_STRING_VAR_PREFIX = "$bString";
@@ -180,7 +181,7 @@ public class JvmConstants {
     public static final String MODULE_VAR_PREFIX = "$module";
 
     public static final String VARIABLE_KEY = "io/ballerina/runtime/internal/configurable/VariableKey";
-    public static final String TOML_DETAILS = "io/ballerina/runtime/internal/configurable/providers/toml/TomlDetails";
+    public static final String CONFIG_DETAILS = "io/ballerina/runtime/internal/configurable/providers/ConfigDetails";
     public static final String CLI_TEST_ARGS = "io/ballerina/runtime/internal/configurable/providers/cli/CliTestArgs";
     public static final String TEST_ARGUMENTS = "io/ballerina/runtime/internal/testable/TestArguments";
     public static final String TEST_CONFIG_ARGS = "io/ballerina/runtime/internal/testable/TestConfigArguments";
@@ -225,6 +226,7 @@ public class JvmConstants {
     public static final String RUNTIME_REGISTRY_CLASS = "io/ballerina/runtime/internal/scheduling/RuntimeRegistry";
     public static final String VALUE_COMPARISON_UTILS = "io/ballerina/runtime/internal/ValueComparisonUtils";
     public static final String REG_EXP_FACTORY = "io/ballerina/runtime/internal/regexp/RegExpFactory";
+    public static final String REPOSITORY_IMPL = "io/ballerina/runtime/internal/RepositoryImpl";
 
     // other java classes
     public static final String OBJECT = "java/lang/Object";
@@ -251,6 +253,7 @@ public class JvmConstants {
     public static final String SYSTEM = "java/lang/System";
     public static final String BIG_DECIMAL = "java/math/BigDecimal";
     public static final String STRING_CONCAT_FACTORY = "java/lang/invoke/StringConcatFactory";
+    public static final String RECEIVE_FIELD = "io/ballerina/runtime/internal/scheduling/WDChannels$ReceiveField";
 
     // service objects, annotation processing related classes
     public static final String ANNOTATION_UTILS = "io/ballerina/runtime/internal/AnnotationUtils";
@@ -262,6 +265,7 @@ public class JvmConstants {
     // types related constants
     public static final String TYPES_ERROR = "TYPE_ERROR";
     public static final String TYPE_ANYDATA_ARRAY = "TYPE_ANYDATA_ARRAY";
+    public static final String TYPE_ANY_ARRAY = "TYPE_ANY_ARRAY";
 
     // error related constants
     public static final String PANIC_FIELD = "panic";
@@ -288,9 +292,11 @@ public class JvmConstants {
     public static final String HANDLE_RETURNED_ERROR_METHOD = "handleRuntimeReturnValues";
     public static final String UNSUPPORTED_OPERATION_EXCEPTION = "java/lang/UnsupportedOperationException";
     public static final String HANDLE_STOP_PANIC_METHOD = "handleAllRuntimeErrors";
+    public static final String HANDLE_RETURNED_ERROR_METHOD_WITHOUT_EXIT = "handleRuntimeErrorReturns";
 
     // code generation related constants.
     public static final String MODULE_INIT_CLASS_NAME = "$_init";
+    public static final String OBJECT_SELF_INSTANCE = "self";
     public static final String UNION_TYPE_CONSTANT_CLASS_NAME = "constants/$_union_type_constants";
     public static final String ERROR_TYPE_CONSTANT_CLASS_NAME = "constants/$_error_type_constants";
     public static final String TUPLE_TYPE_CONSTANT_CLASS_NAME = "constants/$_tuple_type_constants";
@@ -342,8 +348,8 @@ public class JvmConstants {
     public static final String TYPEDESC_CLASS_PREFIX = "$typedesc$";
     public static final String FRAME_CLASS_PREFIX = "frames/$frame$";
     public static final String BALLERINA = "ballerina";
-    public static final String ENCODED_DOT_CHARACTER = "$0046";
-    public static final String ENCODED_JAVA_MODULE = "jballerina$0046java";
+    public static final String ENCODED_DOT_CHARACTER = "&0046";
+    public static final String ENCODED_JAVA_MODULE = "jballerina&0046java";
     public static final PackageID DEFAULT = new PackageID(Names.ANON_ORG, new Name(ENCODED_DOT_CHARACTER),
                                                           DEFAULT_VERSION);
     public static final String BUILT_IN_PACKAGE_NAME = "lang" + ENCODED_DOT_CHARACTER + "annotations";
@@ -380,10 +386,13 @@ public class JvmConstants {
     public static final String START_OF_HEADING_WITH_SEMICOLON = ":\u0001";
     public static final String CREATE_INTEROP_ERROR_METHOD = "createInteropError";
     public static final String LAMBDA_PREFIX = "$lambda$";
+    public static final String SPLIT_CLASS_SUFFIX = "$split$";
     public static final String POPULATE_METHOD_PREFIX = "$populate";
     public static final String ADD_METHOD = "add";
     public static final String TEST_EXECUTION_STATE = "__gH7W16nQmp0TestExecState__";
     public static final String GET_TEST_EXECUTION_STATE = "$getTestExecutionState";
+    public static final String STRAND_LOCAL_VARIABLE_NAME = "__strand";
+    public static final String CLASS_FILE_SUFFIX = ".class";
 
     // scheduler related constants
     public static final String SCHEDULE_FUNCTION_METHOD = "scheduleFunction";
@@ -424,6 +433,16 @@ public class JvmConstants {
     public static final String OBSERVABLE_ANNOTATION = "ballerina/observe/Observable";
     public static final String DISPLAY_ANNOTATION = "display";
     public static final String RECORD_CHECKPOINT_METHOD = "recordCheckpoint";
+    public static final String BALLERINA_HOME = "ballerina.home";
+    public static final String BALLERINA_VERSION = "ballerina.version";
+    public static final String GET_ELEMENT_OR_NIL = "getElementOrNil";
+    public static final String GET_ELEMENT = "getElement";
+    public static final String FILL_AND_GET = "fillAndGet";
+    public static final String GET_BOXED_VALUE = "get";
+    public static final String GET_UNBOXED_INT_VALUE = "getUnboxedIntValue";
+    public static final String GET_UNBOXED_FLOAT_VALUE = "getUnboxedFloatValue";
+    public static final String GET_STRING_VALUE = "getStringValue";
+    public static final String GET_UNBOXED_BOOLEAN_VALUE = "getUnboxedBooleanValue";
     // visibility flags
     public static final int BAL_PUBLIC = 1;
     public static final int BAL_NATIVE = 2;
@@ -446,6 +465,7 @@ public class JvmConstants {
     public static final int MAX_CALLS_PER_CLIENT_METHOD = 100;
     public static final int MAX_CONSTANTS_PER_METHOD = 100;
     public static final int MAX_CALLS_PER_FUNCTION_CALL_METHOD = 100;
+    public static final int MAX_METHOD_COUNT_PER_BALLERINA_OBJECT = 100;
     /*
     MAX_STRINGS_PER_METHOD is calculated as below.
     No of instructions required for create ballerina string constant object = 12
@@ -453,8 +473,8 @@ public class JvmConstants {
     Max strings constant initializations per method = 64000/12 -> 5000
     */
     public static final int MAX_STRINGS_PER_METHOD = 5000;
-
     public static final int VISIT_MAX_SAFE_MARGIN = 10;
+    public static final int OVERFLOW_LINE_NUMBER = 0x80000000;
 
     private JvmConstants() {
     }

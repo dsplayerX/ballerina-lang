@@ -25,6 +25,7 @@ import io.ballerina.runtime.api.types.Type;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BError;
+import io.ballerina.runtime.api.values.BFunctionPointer;
 import io.ballerina.runtime.api.values.BLink;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BMapInitialValueEntry;
@@ -41,6 +42,7 @@ import io.ballerina.runtime.internal.MapUtils;
 import io.ballerina.runtime.internal.TypeChecker;
 import io.ballerina.runtime.internal.errors.ErrorCodes;
 import io.ballerina.runtime.internal.errors.ErrorHelper;
+import io.ballerina.runtime.internal.scheduling.Scheduler;
 import io.ballerina.runtime.internal.types.BField;
 import io.ballerina.runtime.internal.types.BMapType;
 import io.ballerina.runtime.internal.types.BRecordType;
@@ -65,6 +67,7 @@ import java.util.stream.Collectors;
 import static io.ballerina.runtime.api.constants.RuntimeConstants.MAP_LANG_LIB;
 import static io.ballerina.runtime.api.utils.TypeUtils.getImpliedType;
 import static io.ballerina.runtime.internal.JsonInternalUtils.mergeJson;
+import static io.ballerina.runtime.internal.TypeChecker.isEqual;
 import static io.ballerina.runtime.internal.ValueUtils.getTypedescValue;
 import static io.ballerina.runtime.internal.errors.ErrorCodes.INVALID_READONLY_VALUE_UPDATE;
 import static io.ballerina.runtime.internal.errors.ErrorReasons.INVALID_UPDATE_ERROR_IDENTIFIER;
@@ -126,7 +129,23 @@ public class MapValueImpl<K, V> extends LinkedHashMap<K, V> implements RefValue,
     }
 
     public Long getIntValue(BString key) {
-        return (Long) get(key);
+        Object value = get(key);
+        if (value instanceof Integer) { // field is an int subtype
+            return ((Integer) value).longValue();
+        }
+        return (Long) value;
+    }
+
+    public long getUnboxedIntValue(BString key) {
+        return getIntValue(key);
+    }
+
+    public double getUnboxedFloatValue(BString key) {
+        return getFloatValue(key);
+    }
+
+    public boolean getUnboxedBooleanValue(BString key) {
+        return getBooleanValue(key);
     }
 
     public Double getFloatValue(BString key) {
@@ -280,20 +299,44 @@ public class MapValueImpl<K, V> extends LinkedHashMap<K, V> implements RefValue,
                                                   INVALID_READONLY_VALUE_UPDATE)));
     }
 
+    public V putForcefully(K key, V value) {
+        return putValue(key, value);
+    }
+
+    public void setTypeForcefully(Type type) {
+        this.type = type;
+        this.referredType = getImpliedType(type);
+    }
+
     protected void populateInitialValues(BMapInitialValueEntry[] initialValues) {
+        Map<String, BFunctionPointer<Object, ?>> defaultValues = new HashMap<>();
+        if (type.getTag() == TypeTags.RECORD_TYPE_TAG) {
+            defaultValues.putAll(((BRecordType) type).getDefaultValues());
+        }
+
         for (BMapInitialValueEntry initialValue : initialValues) {
             if (initialValue.isKeyValueEntry()) {
                 MappingInitialValueEntry.KeyValueEntry keyValueEntry =
                         (MappingInitialValueEntry.KeyValueEntry) initialValue;
-                populateInitialValue((K) keyValueEntry.key, (V) keyValueEntry.value);
+                Object mapKey = keyValueEntry.key;
+                defaultValues.remove(mapKey.toString());
+                populateInitialValue((K) mapKey, (V) keyValueEntry.value);
                 continue;
             }
 
             MapValueImpl<K, V> values =
                     (MapValueImpl<K, V>) ((MappingInitialValueEntry.SpreadFieldEntry) initialValue).values;
             for (Map.Entry<K, V> entry : values.entrySet()) {
-                populateInitialValue(entry.getKey(), entry.getValue());
+                K entryKey = entry.getKey();
+                defaultValues.remove(entryKey.toString());
+                populateInitialValue(entryKey, entry.getValue());
             }
+        }
+
+        for (Map.Entry<String, BFunctionPointer<Object, ?>> entry : defaultValues.entrySet()) {
+            String key = entry.getKey();
+            BFunctionPointer<Object, ?> value = entry.getValue();
+            populateInitialValue((K) new BmpStringValue(key), (V) value.call(new Object[]{Scheduler.getStrand()}));
         }
     }
 
@@ -337,22 +380,16 @@ public class MapValueImpl<K, V> extends LinkedHashMap<K, V> implements RefValue,
     }
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
+    public boolean equals(Object o, Set<ValuePair> visitedValues) {
+        ValuePair compValuePair = new ValuePair(this, o);
+        for (ValuePair valuePair : visitedValues) {
+            if (valuePair.equals(compValuePair)) {
+                return true;
+            }
         }
+        visitedValues.add(compValuePair);
 
-        if (o == null || getClass() != o.getClass()) {
-           return false;
-        }
-
-        MapValueImpl<?, ?> mapValue = (MapValueImpl<?, ?>) o;
-
-        if (mapValue.type.getTag() != this.type.getTag()) {
-            return false;
-        }
-
-        if (mapValue.referredType.getTag() != this.referredType.getTag()) {
+        if (!(o instanceof MapValueImpl<?, ?> mapValue)) {
             return false;
         }
 
@@ -360,7 +397,18 @@ public class MapValueImpl<K, V> extends LinkedHashMap<K, V> implements RefValue,
             return false;
         }
 
-        return entrySet().equals(mapValue.entrySet());
+        if (!this.keySet().containsAll(mapValue.keySet())) {
+            return false;
+        }
+
+        Iterator<Map.Entry<K, V>> mapIterator = this.entrySet().iterator();
+        while (mapIterator.hasNext()) {
+            Map.Entry<K, V> lhsMapEntry = mapIterator.next();
+            if (!isEqual(lhsMapEntry.getValue(), mapValue.get(lhsMapEntry.getKey()), visitedValues)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

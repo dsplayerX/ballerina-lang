@@ -61,6 +61,7 @@ import io.ballerina.runtime.internal.values.StringValue;
 import io.ballerina.runtime.internal.values.TableValue;
 import io.ballerina.runtime.internal.values.TupleValueImpl;
 import io.ballerina.runtime.internal.values.TypedescValue;
+import org.testng.Assert;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -597,7 +598,7 @@ public class StaticMethods {
         try {
             Thread.sleep(100);
         } catch (InterruptedException e) {
-            assert false;
+            Assert.fail(e.getMessage());
         }
     }
 
@@ -814,5 +815,29 @@ public class StaticMethods {
         output.put(StringUtils.fromString("age"), age);
         output.put(StringUtils.fromString("results"), results);
         balFuture.complete(output);
+    }
+
+    public static BString testOverloadedMethods(Environment env, BArray arr, BString str) {
+        return str;
+    }
+
+    public static BString testOverloadedMethods(ArrayValue obj, BString str) {
+        return str;
+    }
+
+    public static Object getResource(Environment env, BObject client, BArray path, BArray args) {
+        return 5;
+    }
+
+    public static Object getResourceWithBundledParams(BObject client, BArray path, BArray args) {
+        return 1;
+    }
+
+    public static Object getResource(Environment env, BObject client, BArray args) {
+        return 10;
+    }
+
+    public static Object getResourceMethod(BObject service, BArray path) {
+        return 1000;
     }
 }

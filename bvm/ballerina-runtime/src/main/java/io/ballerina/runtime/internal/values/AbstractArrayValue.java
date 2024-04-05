@@ -33,8 +33,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static io.ballerina.runtime.api.constants.RuntimeConstants.ARRAY_LANG_LIB;
+import static io.ballerina.runtime.internal.TypeChecker.isEqual;
 import static io.ballerina.runtime.internal.errors.ErrorCodes.INVALID_READONLY_VALUE_UPDATE;
 import static io.ballerina.runtime.internal.errors.ErrorReasons.INVALID_UPDATE_ERROR_IDENTIFIER;
 import static io.ballerina.runtime.internal.errors.ErrorReasons.getModulePrefixedReason;
@@ -71,6 +73,28 @@ public abstract class AbstractArrayValue implements ArrayValue {
     @Override
     public void append(Object value) {
         add(size, value);
+    }
+
+    @Override
+    public boolean equals(Object o, Set<ValuePair> visitedValues) {
+        ValuePair compValuePair = new ValuePair(this, o);
+        for (ValuePair valuePair : visitedValues) {
+            if (valuePair.equals(compValuePair)) {
+                return true;
+            }
+        }
+        visitedValues.add(compValuePair);
+
+        ArrayValue arrayValue = (ArrayValue) o;
+        if (arrayValue.size() != this.size()) {
+            return false;
+        }
+        for (int i = 0; i < this.size(); i++) {
+            if (!isEqual(this.get(i), arrayValue.get(i), visitedValues)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -151,7 +175,7 @@ public abstract class AbstractArrayValue implements ArrayValue {
         int newLength = (int) length;
         checkFixedLength(length);
         rangeCheck(length, size);
-        fillerValueCheck(newLength, size);
+        fillerValueCheck(newLength, size, newLength);
         resizeInternalArray(newLength);
         fillValues(newLength);
         size = newLength;
@@ -193,9 +217,9 @@ public abstract class AbstractArrayValue implements ArrayValue {
      * helper methods that are visible to the implementation classes.
      */
 
-    protected abstract void fillValues(int newLength);
+    protected abstract void fillValues(int index);
 
-    protected abstract void fillerValueCheck(int newLength, int size2);
+    protected abstract void fillerValueCheck(int index, int size, int expectedLength);
 
     protected abstract void resizeInternalArray(int newLength);
 
@@ -240,6 +264,12 @@ public abstract class AbstractArrayValue implements ArrayValue {
     protected abstract void unshift(long index, Object[] vals);
 
     protected abstract void checkFixedLength(long length);
+
+    protected void prepareForAddForcefully(int intIndex, int currentArraySize) {
+        ensureCapacity(intIndex + 1, currentArraySize);
+        fillValues(intIndex);
+        resetSize(intIndex);
+    }
 
     /**
      * {@code {@link ArrayIterator}} provides iterator implementation for Ballerina array values.

@@ -33,6 +33,7 @@ public class RuntimeConstants {
 
     public static final String MAIN_FUNCTION_NAME = "main";
     public static final String MODULE_INIT_CLASS_NAME = "$_init";
+    public static final String CONFIGURATION_CLASS_NAME = "$configurationMapper";
     public static final String TEST_PACKAGE_NAME = "$test";
     public static final String FILE_NAME_PERIOD_SEPARATOR = "$$$";
 
@@ -49,8 +50,6 @@ public class RuntimeConstants {
     public static final String VERSION_SEPARATOR = ":";
     public static final String UNDERSCORE = "_";
     public static final String COLON = ":";
-    public static final char DOLLAR = '$';
-
     public static final String BLANG_SRC_FILE_EXT = "bal";
     public static final String BLANG_SRC_FILE_SUFFIX = "." + BLANG_SRC_FILE_EXT;
 
@@ -127,6 +126,7 @@ public class RuntimeConstants {
 
     // Name of the system property to hold the debug port
     public static final String SYSTEM_PROP_BAL_DEBUG = "debug";
+    public static final String SYSTEM_PROP_PROFILE_DEBUG = "profilerDebug";
 
     // Transaction constants
     public static final String GLOBAL_TRANSACTION_ID = "globalTransactionId";

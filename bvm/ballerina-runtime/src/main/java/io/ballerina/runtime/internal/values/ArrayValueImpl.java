@@ -36,16 +36,18 @@ import io.ballerina.runtime.api.values.BTypedesc;
 import io.ballerina.runtime.api.values.BValue;
 import io.ballerina.runtime.internal.CycleUtils;
 import io.ballerina.runtime.internal.TypeChecker;
+import io.ballerina.runtime.internal.ValueConverter;
 import io.ballerina.runtime.internal.errors.ErrorCodes;
 import io.ballerina.runtime.internal.errors.ErrorHelper;
 import io.ballerina.runtime.internal.errors.ErrorReasons;
-import io.ballerina.runtime.internal.scheduling.Scheduler;
 import io.ballerina.runtime.internal.types.BArrayType;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringJoiner;
@@ -246,6 +248,11 @@ public class ArrayValueImpl extends AbstractArrayValue {
         }
     }
 
+    public ArrayValueImpl(Type type, long size) {
+        this((ArrayType) TypeUtils.getImpliedType(type), size);
+        this.type = type;
+    }
+
     // Used when the array value is created from a type reference type
     public ArrayValueImpl(Type type, long size, BListInitialValueEntry[] initialValues) {
         this(type, size, initialValues, null);
@@ -320,6 +327,10 @@ public class ArrayValueImpl extends AbstractArrayValue {
             default:
                 return refValues[(int) index];
         }
+    }
+
+    public Object getRefValue(int index) {
+        return refValues[index];
     }
 
     /**
@@ -532,6 +543,73 @@ public class ArrayValueImpl extends AbstractArrayValue {
         addBString(index, value);
     }
 
+    public void addRefValueForcefully(int index, Object value) {
+        switch (this.elementReferredType.getTag()) {
+            case TypeTags.BOOLEAN_TAG:
+                prepareForAddForcefully(index, booleanValues.length);
+                this.booleanValues[index] = (Boolean) value;
+                return;
+            case TypeTags.FLOAT_TAG:
+                prepareForAddForcefully(index, floatValues.length);
+                this.floatValues[index] = (Double) value;
+                return;
+            case TypeTags.BYTE_TAG:
+                prepareForAddForcefully(index, byteValues.length);
+                this.byteValues[index] = ((Number) value).byteValue();
+                return;
+            case TypeTags.INT_TAG:
+            case TypeTags.SIGNED32_INT_TAG:
+            case TypeTags.SIGNED16_INT_TAG:
+            case TypeTags.SIGNED8_INT_TAG:
+            case TypeTags.UNSIGNED32_INT_TAG:
+            case TypeTags.UNSIGNED16_INT_TAG:
+            case TypeTags.UNSIGNED8_INT_TAG:
+                prepareForAddForcefully(index, intValues.length);
+                this.intValues[index] = (Long) value;
+                return;
+            case TypeTags.STRING_TAG:
+            case TypeTags.CHAR_STRING_TAG:
+                prepareForAddForcefully(index, bStringValues.length);
+                this.bStringValues[index] = (BString) value;
+                return;
+            default:
+                prepareForAddForcefully(index, refValues.length);
+                this.refValues[index] = value;
+        }
+    }
+
+    public void convertStringAndAddRefValue(long index, Object value) {
+        switch (this.elementReferredType.getTag()) {
+            case TypeTags.BOOLEAN_TAG:
+            case TypeTags.FLOAT_TAG:
+            case TypeTags.BYTE_TAG:
+            case TypeTags.INT_TAG:
+            case TypeTags.SIGNED32_INT_TAG:
+            case TypeTags.SIGNED16_INT_TAG:
+            case TypeTags.SIGNED8_INT_TAG:
+            case TypeTags.UNSIGNED32_INT_TAG:
+            case TypeTags.UNSIGNED16_INT_TAG:
+            case TypeTags.UNSIGNED8_INT_TAG:
+                throw ErrorCreator.createError(getModulePrefixedReason(ARRAY_LANG_LIB,
+                        INHERENT_TYPE_VIOLATION_ERROR_IDENTIFIER), ErrorHelper.getErrorDetails(
+                        ErrorCodes.INCOMPATIBLE_TYPE, this.elementType, PredefinedTypes.TYPE_STRING));
+            case TypeTags.STRING_TAG:
+            case TypeTags.CHAR_STRING_TAG:
+                if (!TypeChecker.checkIsType(value, this.elementType)) {
+                    throw ErrorCreator.createError(getModulePrefixedReason(ARRAY_LANG_LIB,
+                            INHERENT_TYPE_VIOLATION_ERROR_IDENTIFIER), ErrorHelper.getErrorDetails(
+                            ErrorCodes.INCOMPATIBLE_TYPE, this.elementType, PredefinedTypes.TYPE_STRING));
+                }
+                prepareForAddWithoutTypeCheck(index, bStringValues.length);
+                this.bStringValues[(int) index] = (BString) value;
+                return;
+            default:
+                Object val = ValueConverter.getConvertedStringValue((BString) value, this.elementType);
+                prepareForAddWithoutTypeCheck(index, refValues.length);
+                this.refValues[(int) index] = val;
+        }
+    }
+
     public void addRefValue(long index, Object value) {
         Type type = TypeChecker.getType(value);
         switch (this.elementReferredType.getTag()) {
@@ -566,6 +644,17 @@ public class ArrayValueImpl extends AbstractArrayValue {
                 prepareForAdd(index, value, type, refValues.length);
                 this.refValues[(int) index] = value;
         }
+    }
+
+    public void setRefValueForcefully(int index, Object refValue) {
+        this.refValues[index] = refValue;
+    }
+
+    public void setArrayRefTypeForcefully(ArrayType type, int size) {
+        this.type = this.arrayType = type;
+        this.size = size;
+        this.elementType = type.getElementType();
+        this.elementReferredType = TypeUtils.getImpliedType(this.elementType);
     }
 
     public void addInt(long index, long value) {
@@ -1058,25 +1147,20 @@ public class ArrayValueImpl extends AbstractArrayValue {
                 return;
             default:
                 if (arrayType.hasFillerValue()) {
-                    if (elementTypedescValue != null) {
-                        extractRecordFillerValues(index);
-                    } else {
-                        extractComplexFillerValues(index);
-                    }
+                    extractComplexFillerValues(index);
                 }
         }
     }
 
     private void extractComplexFillerValues(int index) {
         for (int i = size; i < index; i++) {
-            this.refValues[i] = this.elementType.getZeroValue();
+            this.refValues[i] = getElementZeroValue();
         }
     }
 
-    private void extractRecordFillerValues(int index) {
-        for (int i = size; i < index; i++) {
-            this.refValues[i] = elementTypedescValue.instantiate(Scheduler.getStrand());
-        }
+    private Object getElementZeroValue() {
+        return this.elementTypedescValue == null ? this.elementType.getZeroValue() :
+                this.elementTypedescValue.getDescribingType().getZeroValue();
     }
 
     @Override
@@ -1105,7 +1189,7 @@ public class ArrayValueImpl extends AbstractArrayValue {
     }
 
     @Override
-    protected void fillerValueCheck(int index, int size) {
+    protected void fillerValueCheck(int index, int size, int expectedLength) {
         // if the elementType doesn't have an implicit initial value & if the insertion is not a consecutive append
         // to the array, then an exception will be thrown.
         if (arrayType.hasFillerValue()) {
@@ -1113,7 +1197,7 @@ public class ArrayValueImpl extends AbstractArrayValue {
         }
         if (index > size) {
             throw ErrorHelper.getRuntimeException(ErrorReasons.ILLEGAL_LIST_INSERTION_ERROR,
-                                                           ErrorCodes.ILLEGAL_ARRAY_INSERTION, size, index + 1);
+                                                           ErrorCodes.ILLEGAL_ARRAY_INSERTION, size, expectedLength);
         }
     }
 
@@ -1169,10 +1253,13 @@ public class ArrayValueImpl extends AbstractArrayValue {
                     INHERENT_TYPE_VIOLATION_ERROR_IDENTIFIER), ErrorHelper.getErrorDetails(
                             ErrorCodes.INCOMPATIBLE_TYPE, this.elementType, sourceType));
         }
+        prepareForAddWithoutTypeCheck(index, currentArraySize);
+    }
 
+    private void prepareForAddWithoutTypeCheck(long index, int currentArraySize) {
         int intIndex = (int) index;
         rangeCheck(index, size);
-        fillerValueCheck(intIndex, size);
+        fillerValueCheck(intIndex, size, intIndex + 1);
         ensureCapacity(intIndex + 1, currentArraySize);
         fillValues(intIndex);
         resetSize(intIndex);
@@ -1291,12 +1378,33 @@ public class ArrayValueImpl extends AbstractArrayValue {
     @Override
     public int hashCode() {
         int result = Objects.hash(type, elementType);
-        result = 31 * result + Arrays.hashCode(refValues);
+        result = 31 * result + calculateHashCode(new ArrayList<>());
         result = 31 * result + Arrays.hashCode(intValues);
         result = 31 * result + Arrays.hashCode(booleanValues);
         result = 31 * result + Arrays.hashCode(byteValues);
         result = 31 * result + Arrays.hashCode(floatValues);
         result = 31 * result + Arrays.hashCode(bStringValues);
+        return result;
+    }
+
+    private int calculateHashCode(List<Object> visited) {
+        if (refValues == null) {
+            return 0;
+        }
+
+        int result = 1;
+        if (visited.contains(refValues)) {
+            return 31 * result + System.identityHashCode(refValues);
+        }
+        visited.add(refValues);
+
+        for (Object ref : refValues) {
+            if (ref instanceof ArrayValueImpl) {
+                result = 31 * result + calculateHashCode(visited);
+            } else {
+                result = 31 * result + (ref == null ? 0 : ref.hashCode());
+            }
+        }
         return result;
     }
 }

@@ -52,6 +52,7 @@ import org.wso2.ballerinalang.compiler.tree.BLangRecordVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangService;
 import org.wso2.ballerinalang.compiler.tree.BLangSimpleVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangTupleVariable;
+import org.wso2.ballerinalang.compiler.tree.BLangVariable;
 import org.wso2.ballerinalang.compiler.tree.bindingpatterns.BLangBindingPattern;
 import org.wso2.ballerinalang.compiler.tree.bindingpatterns.BLangCaptureBindingPattern;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangMatchClause;
@@ -101,6 +102,7 @@ import org.wso2.ballerinalang.compiler.tree.statements.BLangReturn;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangSimpleVariableDef;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangStatement;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangTupleVariableDef;
+import org.wso2.ballerinalang.compiler.tree.statements.BLangWhile;
 import org.wso2.ballerinalang.compiler.tree.types.BLangType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangUserDefinedType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangValueType;
@@ -267,6 +269,16 @@ public class ASTBuilderUtil {
         foreach.body = ASTBuilderUtil.createBlockStmt(pos);
         foreach.collection = collectionVarRef;
         return foreach;
+    }
+
+    static BLangWhile createWhile(Location pos,
+                                  BLangExpression condition,
+                                  BLangBlockStmt body) {
+        final BLangWhile whileNode = (BLangWhile) TreeBuilder.createWhileNode();
+        whileNode.pos = pos;
+        whileNode.body = body;
+        whileNode.expr = condition;
+        return whileNode;
     }
 
     static BLangSimpleVariableDef createVariableDefStmt(Location pos, BlockNode target) {
@@ -550,6 +562,21 @@ public class ASTBuilderUtil {
         variableDef.pos = pos;
         variableDef.var = variable;
         return variableDef;
+    }
+
+    static BLangErrorVariable createErrorVariable(Location pos, BType type, BLangExpression expr,
+                                                  BLangSimpleVariable message, BLangVariable cause,
+                                                  BLangSimpleVariable restDetail,
+                                                  List<BLangErrorVariable.BLangErrorDetailEntry> detail) {
+        final BLangErrorVariable errVariable = (BLangErrorVariable) TreeBuilder.createErrorVariableNode();
+        errVariable.pos = pos;
+        errVariable.setBType(type);
+        errVariable.expr = expr;
+        errVariable.message = message;
+        errVariable.cause =  cause;
+        errVariable.restDetail = restDetail;
+        errVariable.detail = detail;
+        return errVariable;
     }
 
     static BLangErrorVariableDef createErrorVariableDef(Location pos, BLangErrorVariable variable) {
